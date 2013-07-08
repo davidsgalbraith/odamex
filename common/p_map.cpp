@@ -194,7 +194,7 @@ BOOL P_TeleportMove (AActor *thing, fixed_t x, fixed_t y, fixed_t z, BOOL telefr
 	tmbbox[BOXRIGHT] = x + tmthing->radius;
 	tmbbox[BOXLEFT] = x - tmthing->radius;
 
-	newsubsec = R_PointInSubsector (x,y);
+	newsubsec = P_PointInSubsector (x,y);
 	ceilingline = NULL;
 
 	// The base floor/ceiling is from the subsector
@@ -751,7 +751,7 @@ bool P_CheckPosition (AActor *thing, fixed_t x, fixed_t y)
 	AActor *thingblocker = NULL;
 	fixed_t realheight = thing->height;
 	bool spectator = thing->player && thing->player->spectator;
-	subsector_t *subsec = R_PointInSubsector(x,y);
+	subsector_t *subsec = P_PointInSubsector(x,y);
 	// NOTE(jsd): NULL check here fixes crash while awaiting download in an active game.
 	if (subsec == NULL)
 		return false;
@@ -1867,132 +1867,6 @@ BOOL PTR_AimTraverse (intercept_t* in)
 	return false;						// don't go any farther
 }
 
-//
-// P_ShootLine
-//
-// Helper function for PTR_ShootTraverse. Spawns a bullet puff if the intercept
-// hits a line or the floor/ceiling. Returns true if the intercept should continue
-// because it did not hit a solid line.
-//
-bool P_ShootLine(intercept_t* in)
-{
-	bool precise = (co_fixweaponimpacts != 0);
-	line_t* li = in->d.line;
-	
-	if (!in->isaline)
-		return true;
-
-	if (li->special)
-		P_ShootSpecialLine(shootthing, li);
-
-	// don't shoot horizon lines
-	if (li->special == Line_Horizon)
-		return false;
-
-	// [SL] 2012-02-08 - Calculates where the intercept crosses the line
-	fixed_t crossx = trace.x + FixedMul(trace.dx, in->frac);
-	fixed_t crossy = trace.y + FixedMul(trace.dy, in->frac);
-
-	// [SL] determine which sector is on the side of the line that faces the shooter
-	sector_t *sec1, *sec2;
-	if (!precise || !li->backsector	|| !P_PointOnLineSide(trace.x, trace.y, li))
-	{
-		sec1 = li->frontsector;
-		sec2 = li->backsector;
-	}
-	else
-	{
-		sec1 = li->backsector;
-		sec2 = li->frontsector;
-	}
-
-	fixed_t ceilingheight1 = P_CeilingHeight(crossx, crossy, sec1);
-	fixed_t ceilingheight2 = sec2 ? P_CeilingHeight(crossx, crossy, sec2) : MAXINT;
-	fixed_t floorheight1 = P_FloorHeight(crossx, crossy, sec1);
-	fixed_t floorheight2 = sec2 ? P_FloorHeight(crossx, crossy, sec2) : MAXINT;
-
-	// position the destination for the bullet puff a bit closer
-	fixed_t frac = in->frac - FixedDiv(4 * FRACUNIT, attackrange);
-	fixed_t z = shootz + FixedMul(aimslope, FixedMul(frac, attackrange));
-
-	if (li->flags & ML_TWOSIDED && !(li->flags & ML_BLOCKEVERYTHING))
-	{
-		// crosses a two sided line
-		P_LineOpening(li, trace.x + FixedMul(trace.dx, in->frac), trace.y + FixedMul(trace.dy, in->frac));
-
-		if (precise)
-		{
-			if (z < opentop && z > openbottom)
-			{
-				// shot didn't hit the solid part of this line
-				opentop = ceilingheight2;
-				openbottom = floorheight2;
-				return true;
-			}
-		}
-		else
-		{
-			// e6y: emulation of missed back side on two-sided lines.
-			// backsector can be NULL when emulating missing back side.
-
-			fixed_t dist = FixedMul(attackrange, in->frac);
-			bool hittop = (li->backsector == NULL || ceilingheight1 != ceilingheight2) &&
-						FixedDiv(opentop - shootz, dist) < aimslope;
-			bool hitbottom = (li->backsector == NULL || floorheight1 != floorheight2) &&
-						FixedDiv(openbottom - shootz, dist) > aimslope;
-
-			if (!hittop && !hitbottom)
-				return true;	// shot didn't hit the solid part of this line
-		}
-	}
-
-	// definitely hit the solid part of the line
-
-	bool skyceiling1 = sec1->ceilingpic == skyflatnum;
-	bool skyceiling2 = sec2 && sec2->ceilingpic == skyflatnum;
-
-	// sky wall hack
-	if (skyceiling1 && skyceiling2)
-	{
-		if (!precise || z > ceilingheight2)
-			return false;
-	}
-
-	// check for shooting skies
-	if (skyceiling1 && z > ceilingheight1)
-		return false;		
-
-	// check for shooting sky floors
-	if (precise && sec1->floorpic == skyflatnum && z < floorheight1)
-		return false;
-
-	v3fixed_t lineorg, linedir, puffpos;
-	
-	// set origin vector for the bullet
-	M_SetVec3Fixed(&lineorg, trace.x, trace.y, shootz);
-	// set direction vector for the bullet
-	M_SetVec3Fixed(&linedir, trace.dx, trace.dy, FixedMul(aimslope, attackrange));
-
-	if (precise && z > ceilingheight1)
-	{
-		puffpos = P_LinePlaneIntersection(&sec1->ceilingplane, lineorg, linedir);
-	}
-	else if (precise && z < floorheight1)
-	{
-		puffpos =  P_LinePlaneIntersection(&sec1->floorplane, lineorg, linedir);
-	}
-	else
-	{
-		puffpos.x = trace.x + FixedMul(trace.dx, frac);
-		puffpos.y = trace.y + FixedMul(trace.dy, frac);
-		puffpos.z = z;
-	}
-
-	// Spawn bullet puffs.
-	P_SpawnPuff(puffpos.x, puffpos.y, puffpos.z);
-	return false;
-}
-
 
 //
 // PTR_ShootTraverse
@@ -2001,11 +1875,188 @@ BOOL PTR_ShootTraverse (intercept_t* in)
 {
 	fixed_t x, y, z;
 	fixed_t frac;
+	line_t *li;
 	AActor *th;
+	fixed_t slope;
+	fixed_t dist = FixedMul(attackrange, in->frac);
 	fixed_t thingtopslope, thingbottomslope;
+	fixed_t ceilingheight, floorheight;
+	bool spawnprecise;
+	
+	// [SL] 2012-03-18 - origin and direction vectors for the shot
+	v3fixed_t lineorg, linedir;
+	M_SetVec3Fixed(&lineorg, trace.x, trace.y, shootz);
+	M_SetVec3Fixed(&linedir, trace.dx, trace.dy, FixedMul(aimslope, attackrange));
+			
+	// [SL] 2012-02-08 - Calculates where the intercept crosses the line
+	fixed_t crossx = trace.x + FixedMul(trace.dx, in->frac);
+	fixed_t crossy = trace.y + FixedMul(trace.dy, in->frac);
+	
+	spawnprecise = (co_fixweaponimpacts != 0);
 
 	if (in->isaline)
-		return P_ShootLine(in);
+	{
+		li = in->d.line;
+
+		// [RH] Technically, this could improperly cause an impact line to
+		//		activate even if the shot continues, but it's necessary
+		//		to have it here for Hexen compatibility.
+		if (li->special)
+			P_ShootSpecialLine (shootthing, li);
+
+		// position a bit closer
+		frac = in->frac - FixedDiv (4*FRACUNIT,attackrange);
+		z = shootz + FixedMul (aimslope, FixedMul(frac, attackrange));
+
+		if (!(li->flags & ML_TWOSIDED) || (li->flags & ML_BLOCKEVERYTHING))
+			goto hitline;
+
+		// crosses a two sided line
+		P_LineOpening(li, trace.x + FixedMul(trace.dx, in->frac),
+				trace.y + FixedMul(trace.dy, in->frac));
+
+		if (spawnprecise)
+		{
+			if (z >= opentop || z <= openbottom)
+				goto hitline;
+
+			// [RH] set opentop and openbottom for P_LineAttack
+			if (P_PointOnLineSide (trace.x, trace.y, li))
+			{
+				opentop = P_CeilingHeight(crossx, crossy, li->frontsector);
+				openbottom = P_FloorHeight(crossx, crossy, li->frontsector);
+			}
+			else 
+			{
+				opentop = P_CeilingHeight(crossx, crossy, li->backsector);
+				openbottom = P_FloorHeight(crossx, crossy, li->backsector);
+			}
+		}
+		else
+		{
+			if (P_FloorHeight(crossx, crossy, li->frontsector) !=
+				P_FloorHeight(crossx, crossy, li->backsector))
+			{
+				slope = FixedDiv (openbottom - shootz , dist);
+				if (slope > aimslope)
+					goto hitline;
+			}
+
+			if (P_CeilingHeight(crossx, crossy, li->frontsector) !=
+				P_CeilingHeight(crossx, crossy, li->backsector))			
+			{
+				slope = FixedDiv (opentop - shootz , dist);
+				if (slope < aimslope)
+					goto hitline;
+			}
+		}
+
+		// shot continues
+		return true;
+		
+		// hit line
+	  hitline:
+		// position a bit closer
+		if (spawnprecise)
+		{
+			plane_t *floorplane, *ceilingplane;
+			int ceilingpic, floorpic;
+
+			// [SL] 2012-01-25 - Don't show bullet puffs on horizon lines 
+			if (li->special == Line_Horizon)
+				return false;
+
+			if (!li->backsector || !P_PointOnLineSide (trace.x, trace.y, li)) {
+				ceilingplane = &li->frontsector->ceilingplane;
+				floorplane = &li->frontsector->floorplane;
+				
+				ceilingheight = P_CeilingHeight(crossx, crossy, li->frontsector);
+				floorheight = P_FloorHeight(crossx, crossy, li->frontsector);
+				ceilingpic = li->frontsector->ceilingpic;
+				floorpic = li->frontsector->floorpic;
+			} else {
+				ceilingplane = &li->backsector->ceilingplane;
+				floorplane = &li->backsector->floorplane;
+				
+				ceilingheight = P_CeilingHeight(crossx, crossy, li->backsector);
+				floorheight = P_FloorHeight(crossx, crossy, li->backsector);
+				ceilingpic = li->backsector->ceilingpic;
+				floorpic = li->backsector->floorpic;
+			}
+
+			// [RH] If the trace went below/above the floor/ceiling, make the puff
+			//		appear in the right place and not on a wall.
+			if (z < floorheight)
+			{
+				if (floorpic == skyflatnum)			// don't shoot the sky!
+					return false;
+			
+				// [SL] 2012-03-18 - Calculate where the the tracer intersects
+				// with the floor plane
+				v3fixed_t pt = P_LinePlaneIntersection(floorplane, lineorg, linedir);
+				x = pt.x;
+				y = pt.y;
+				z = pt.z;
+			}
+			else if (z > ceilingheight)
+			{
+				if (ceilingpic == skyflatnum)			// don't shoot the sky!
+					return false;
+
+				// [SL] 2012-03-18 - Calculate where the the tracer intersects
+				// with the ceiling plane
+				v3fixed_t pt = P_LinePlaneIntersection(ceilingplane, lineorg, linedir);
+				x = pt.x;
+				y = pt.y;
+				
+				// Puffs on the ceiling need to be lowered to compensate for
+				// the height of the puff
+				// [SL] 2012-03-18 - FIXME: the puffs are too low
+				z = pt.z - mobjinfo[MT_PUFF].height;
+			}
+			else
+			{
+				if (li->backsector && z > opentop &&
+					li->frontsector->ceilingpic == skyflatnum &&
+					li->backsector->ceilingpic == skyflatnum &&
+					li->backsector->ceilingheight < z)
+				{
+					return false;	// sky hack wall
+				}
+
+				// Hit a wall				
+				x = trace.x + FixedMul(trace.dx, frac);
+				y = trace.y + FixedMul(trace.dy, frac);
+			}
+
+			// Spawn bullet puffs.
+			P_SpawnPuff(x, y, z);
+		}
+		else
+		{
+			frac = in->frac - FixedDiv (4*FRACUNIT,attackrange);
+			x = trace.x + FixedMul (trace.dx, frac);
+			y = trace.y + FixedMul (trace.dy, frac);
+			z = shootz + FixedMul (aimslope, FixedMul(frac, attackrange));
+
+			if (li->frontsector->ceilingpic == skyflatnum)
+			{
+			// don't shoot the sky!
+				if (z > P_CeilingHeight(crossx, crossy, li->frontsector))
+					return false;
+
+			// it's a sky hack wall
+				if	(li->backsector && li->backsector->ceilingpic == skyflatnum)
+					return false;
+			}
+
+			// Spawn bullet puffs.
+			P_SpawnPuff(x, y, z);
+		}
+		
+		// don't go any farther
+		return false;
+	}
 
 	// shoot a thing
 	th = in->d.thing;
@@ -2020,7 +2071,6 @@ BOOL PTR_ShootTraverse (intercept_t* in)
 		return true;
 
 	// check angles to see if the thing can be aimed at
-	fixed_t dist = FixedMul(attackrange, in->frac);
 	thingtopslope = FixedDiv (th->z+th->height - shootz , dist);
 
 	if (thingtopslope < aimslope)
@@ -2239,7 +2289,7 @@ void P_LineAttack (AActor *t1, angle_t angle, fixed_t distance,
 			x2 = t1->x + FixedMul (x2 - t1->x, frac);
 			y2 = t1->y + FixedMul (y2 - t1->y, frac);
 			updown = 1;
-			if ( (subsector = R_PointInSubsector (x2, y2)) ) {
+			if ( (subsector = P_PointInSubsector (x2, y2)) ) {
 				if (subsector->sector->ceilingpic == skyflatnum)
 					return;	// disappeared in the clouds
 			} else
@@ -2561,7 +2611,7 @@ void P_AimCamera (AActor *t1)
 	aimslope = finetangent[FINEANGLES/4+(t1->pitch>>ANGLETOFINESHIFT)];
 
 	CameraZ = shootz + (fixed_t)(chase_dist * aimslope);
-	subsector = R_PointInSubsector (x2, y2);
+	subsector = P_PointInSubsector (x2, y2);
 	if (subsector) {
 		fixed_t ceilingheight = P_CeilingHeight(x2, y2, subsector->sector) - CAMERA_DIST;
 		fixed_t floorheight = P_FloorHeight(x2, y2, subsector->sector) + CAMERA_DIST;		
@@ -3397,7 +3447,7 @@ double P_PlaneZ(double x, double y, const plane_t *plane)
 //
 // Returns the height of a floor plane at the point (x, y).  The subsector
 // parameter is optional but provides a speedup if used because P_PlaneZ
-// can avoid a call to R_PointInSubsector().
+// can avoid a call to P_PointInSubsector().
 //
 // Note that there is no check made to ensure the point (x, y) is actually
 // within the subsector.
@@ -3406,7 +3456,7 @@ double P_PlaneZ(double x, double y, const plane_t *plane)
 //
 fixed_t P_FloorHeight(fixed_t x, fixed_t y, const sector_t *sector)
 {
-	if (!sector && !(sector = R_PointInSubsector(x, y)->sector))
+	if (!sector && !(sector = P_PointInSubsector(x, y)->sector))
 		return MAXINT;
 
 	return P_PlaneZ(x, y, &sector->floorplane);
@@ -3434,7 +3484,7 @@ fixed_t P_FloorHeight(const sector_t *sector)
 //
 // Returns the height of a ceiling plane at the point (x, y).  The subsector
 // parameter is optional but provides a speedup if used because P_PlaneZ
-// can avoid a call to R_PointInSubsector().
+// can avoid a call to P_PointInSubsector().
 //
 // Note that there is no check made to ensure the point (x, y) is actually
 // within the subsector.
@@ -3443,7 +3493,7 @@ fixed_t P_FloorHeight(const sector_t *sector)
 //
 fixed_t P_CeilingHeight(fixed_t x, fixed_t y, const sector_t *sector)
 {
-	if (!sector && !(sector = R_PointInSubsector(x, y)->sector))
+	if (!sector && !(sector = P_PointInSubsector(x, y)->sector))
 		return MAXINT;
 
 	return P_PlaneZ(x, y, &sector->ceilingplane);

@@ -1065,7 +1065,8 @@ void G_InitLevelLocals ()
 	int i;
 
 	BaseBlendA = 0.0f;		// Remove underwater blend effect, if any
-	NormalLight.maps = realcolormaps;
+	NormalLight.maps = shaderef_t(&realcolormaps, 0);
+	//NormalLight.maps = shaderef_t(&DefaultPalette->maps, 0);
 	r_underwater = false;
 
 	level.gravity = sv_gravity;
@@ -1086,9 +1087,9 @@ void G_InitLevelLocals ()
 		strncpy (level.skypic2, pinfo->skypic2, 8);
 		level.fadeto = pinfo->fadeto;
 		if (level.fadeto) {
-			NormalLight.maps = GetDefaultPalette()->maps.colormaps;
+			NormalLight.maps = shaderef_t(&GetDefaultPalette()->maps, 0);
 		} else {
-			R_SetDefaultColormap (pinfo->fadetable);
+			R_ForceDefaultColormap (pinfo->fadetable);
 		}
 		level.outsidefog = pinfo->outsidefog;
 		level.flags |= LEVEL_DEFINEDINMAPINFO;
@@ -1106,7 +1107,7 @@ void G_InitLevelLocals ()
 		level.skypic2[0] = 0;
 		level.fadeto = 0;
 		level.outsidefog = 0xff000000;	// 0xff000000 signals not to handle it special
-		R_SetDefaultColormap ("COLORMAP");
+		R_ForceDefaultColormap ("COLORMAP");
 	}
 
 	if (info->level_name) {

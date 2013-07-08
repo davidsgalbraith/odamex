@@ -46,6 +46,7 @@
 #endif
 
 EXTERN_CVAR (vid_autoadjust)
+EXTERN_CVAR (vid_vsync)
 
 SDLVideo::SDLVideo(int parm)
 {
@@ -101,21 +102,18 @@ SDLVideo::SDLVideo(int parm)
    palettechanged = false;
 
    // Get Video modes
-   SDL_PixelFormat fmt;
-   fmt.palette = NULL;
-   fmt.BitsPerPixel = 8;
-   fmt.BytesPerPixel = 1;
-
-   SDL_Rect **sdllist = SDL_ListModes(NULL, SDL_FULLSCREEN|SDL_SWSURFACE);
-
    vidModeIterator = 0;
-   vidModeIteratorBits = 8;
    vidModeList.clear();
+
+	// NOTE(jsd): We only support 32-bit and 8-bit color modes. No 24-bit or 16-bit.
+
+	// Fetch the list of fullscreen modes for this bpp setting:
+	SDL_Rect **sdllist = SDL_ListModes(NULL, SDL_FULLSCREEN|SDL_SWSURFACE);
 
    if(!sdllist)
    {
 	  // no fullscreen modes, but we could still try windowed
-	  Printf(PRINT_HIGH, "SDL_ListModes returned NULL. No fullscreen video modes are available.\n");
+		Printf(PRINT_HIGH, "No fullscreen video modes are available.\n");
 	  return;
    }
    else if(sdllist == (SDL_Rect **)-1)
@@ -127,10 +125,10 @@ SDLVideo::SDLVideo(int parm)
    {
       vidMode_t CustomVidModes[] =
       {
-         { 640, 480, 8 }
-        ,{ 640, 400, 8 }
-        ,{ 320, 240, 8 }
-        ,{ 320, 200, 8 }
+			 { 640, 480 }
+			,{ 640, 400 }
+			,{ 320, 240 }
+			,{ 320, 200 }
       };
 
       // Add in generic video modes reported by SDL
@@ -140,7 +138,6 @@ SDLVideo::SDLVideo(int parm)
 
         vm.width = sdllist[i]->w;
         vm.height = sdllist[i]->h;
-        vm.bits = 8;
 
         vidModeList.push_back(vm);
       }
@@ -148,6 +145,7 @@ SDLVideo::SDLVideo(int parm)
       // Now custom video modes to be added
       for (size_t i = 0; i < STACKARRAY_LENGTH(CustomVidModes); ++i)
         vidModeList.push_back(CustomVidModes[i]);
+	}
 
       // Reverse sort the modes
       std::sort(vidModeList.begin(), vidModeList.end(), std::greater<vidMode_t>());
@@ -155,7 +153,6 @@ SDLVideo::SDLVideo(int parm)
       // Get rid of any duplicates (SDL some times reports duplicates as well)
       vidModeList.erase(std::unique(vidModeList.begin(), vidModeList.end()), vidModeList.end());
    }
-}
 
 SDLVideo::~SDLVideo(void)
 {
@@ -256,7 +253,7 @@ bool SDLVideo::SetMode(int width, int height, int bits, bool fullscreen)
 }
 
 
-void SDLVideo::SetPalette(DWORD *palette)
+void SDLVideo::SetPalette(argb_t *palette)
 {
 	for (size_t i = 0; i < sizeof(newPalette)/sizeof(SDL_Color); i++)
 	{
@@ -295,7 +292,10 @@ void SDLVideo::UpdateScreen(DCanvas *canvas)
 		SDL_BlitSurface((SDL_Surface*)canvas->m_Private, NULL, sdlScreen, &dstrect);
 	}
 
-	SDL_Flip(sdlScreen);
+	if (vid_vsync)
+		SDL_Flip(sdlScreen);
+	else
+		SDL_UpdateRect(sdlScreen, 0, 0, 0, 0);
 }
 
 
@@ -335,36 +335,25 @@ int SDLVideo::GetModeCount ()
 }
 
 
-void SDLVideo::StartModeIterator (int bits)
+void SDLVideo::StartModeIterator ()
 {
    vidModeIterator = 0;
-   vidModeIteratorBits = bits;
 }
-
 
 bool SDLVideo::NextMode (int *width, int *height)
 {
-   std::vector<vidMode_t>::iterator it;
+	std::vector<vidMode_t>::iterator it;
 
-   it = vidModeList.begin() + vidModeIterator;
+	it = vidModeList.begin() + vidModeIterator;
+	if (it == vidModeList.end())
+		return false;
 
-   while(it != vidModeList.end())
-   {
-      vidMode_t vm = *it;
+	vidMode_t vm = *it;
 
-      if(vm.bits == vidModeIteratorBits)
-      {
-         *width = vm.width;
-         *height = vm.height;
-         vidModeIterator++;
-         return true;
-      }
-
-      vidModeIterator++;
-
-      ++it;
-   }
-   return false;
+	*width = vm.width;
+	*height = vm.height;
+	vidModeIterator++;
+	return true;
 }
 
 
@@ -374,7 +363,7 @@ DCanvas *SDLVideo::AllocateSurface(int width, int height, int bits, bool primary
 
 	scrn->width = width;
 	scrn->height = height;
-	scrn->bits = screenbits;
+	scrn->bits = bits;
 	scrn->m_LockCount = 0;
 	scrn->m_Palette = NULL;
 	scrn->buffer = NULL;
@@ -390,13 +379,13 @@ DCanvas *SDLVideo::AllocateSurface(int width, int height, int bits, bool primary
 		// SDL interprets each pixel as a 32-bit number, so our masks must depend
 		// on the endianness (byte order) of the machine
 		#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-		rmask = 0x00ff0000;
-		gmask = 0x0000ff00;
-		bmask = 0x000000ff;
-		#else
 		rmask = 0x0000ff00;
 		gmask = 0x00ff0000;
 		bmask = 0xff000000;
+		#else
+		rmask = 0x00ff0000;
+		gmask = 0x0000ff00;
+		bmask = 0x000000ff;
 		#endif
 	}
 
@@ -440,7 +429,6 @@ void SDLVideo::ReleaseSurface(DCanvas *scrn)
 
 	delete scrn;
 }
-
 
 
 void SDLVideo::LockSurface (DCanvas *scrn)

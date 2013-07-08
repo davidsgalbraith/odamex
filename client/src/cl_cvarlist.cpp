@@ -343,9 +343,11 @@ CVAR_FUNC_DECL (vid_gammatype, "0", "Select between Doom and ZDoom gamma correct
 // Type of crosshair, 0 means none
 CVAR_FUNC_DECL (hud_crosshair, "0", "Type of crosshair, 0 means no crosshair",	CVARTYPE_BYTE, CVAR_ARCHIVE | CVAR_NOENABLEDISABLE)
 // Column optimization method
-CVAR (r_columnmethod, "1", "Column optimization method",	CVARTYPE_BYTE, CVAR_ARCHIVE)
+CVAR (r_columnmethod, "1", "Column optimization method",	CVARTYPE_BOOL, CVAR_ARCHIVE)
 // Detail level (affects performance)
 CVAR_FUNC_DECL (r_detail, "0", "Detail level (affects performance)",	CVARTYPE_BYTE, CVAR_ARCHIVE | CVAR_NOENABLEDISABLE)
+// Draws flashing colors where there is HOM
+CVAR (r_flashhom, "0", "Draws flashing colors where there is HOM", CVARTYPE_BOOL, 0)
 // Disables all texturing of walls
 CVAR (r_drawflat, "0", "Disables all texturing of walls",	CVARTYPE_BOOL, 0)
 // Draw player sprites
@@ -378,14 +380,14 @@ CVAR (r_viewsize, "0", "",	CVARTYPE_BYTE, CVAR_NOSET | CVAR_NOENABLEDISABLE)
 // Default video dimensions. [AM] Bumped up from 320x200.
 CVAR (vid_defwidth, "640", "",	CVARTYPE_WORD, CVAR_ARCHIVE | CVAR_NOENABLEDISABLE)
 CVAR (vid_defheight, "480", "",	CVARTYPE_WORD, CVAR_ARCHIVE | CVAR_NOENABLEDISABLE)
-// Default bitdepth
-CVAR (vid_defbits, "8", "",	CVARTYPE_BYTE, CVAR_ARCHIVE | CVAR_NOENABLEDISABLE)
 // Use wide field-of-view with widescreen video modes.
 CVAR_FUNC_DECL (vid_widescreen, "0", "Use wide field-of-view with widescreen video modes.", CVARTYPE_BOOL, CVAR_ARCHIVE)
 // Force video mode
 CVAR (vid_autoadjust, "1", "",	CVARTYPE_BOOL, CVAR_ARCHIVE)
 // Frames per second counter
 CVAR (vid_fps, "0", "",	CVARTYPE_BOOL, 0)
+// Wait for vertical sync (vsync)
+CVAR (vid_vsync, "1", "Wait for vertical sync", CVARTYPE_BOOL, CVAR_ARCHIVE)
 // Run at 35fps
 CVAR_FUNC_DECL (vid_capfps, "1", "Limit to 35fps", CVARTYPE_BOOL, CVAR_ARCHIVE)
 // Fullscreen mode
@@ -394,6 +396,11 @@ CVAR_FUNC_DECL (vid_capfps, "1", "Limit to 35fps", CVARTYPE_BOOL, CVAR_ARCHIVE)
 #else
 	CVAR_FUNC_DECL (vid_fullscreen, "0", "",	CVARTYPE_BOOL, CVAR_ARCHIVE)
 #endif
+// Yes for 32-bit, No for 8-bit
+CVAR_FUNC_DECL (vid_32bpp,		"0", "",	CVARTYPE_BOOL, CVAR_ARCHIVE)
+// Optimize rendering functions based on CPU vectorization support
+// Can be of "detect" or "none" or "mmx","sse2","altivec" depending on availability; case-insensitive.
+CVAR_FUNC_DECL (r_optimize, "detect", "Rendering optimizations", CVARTYPE_STRING, CVAR_USERINFO | CVAR_ARCHIVE | CVAR_NOENABLEDISABLE)
 // TODO: document
 CVAR_FUNC_DECL (screenblocks, "10", "",	CVARTYPE_BYTE, CVAR_ARCHIVE | CVAR_NOENABLEDISABLE)
 // Older (Doom-style) FPS counter

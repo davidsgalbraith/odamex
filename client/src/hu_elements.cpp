@@ -661,6 +661,8 @@ void EAPlayerColors(int x, int y,
 			                      BPART(playercolor),
 			                      GetDefaultPalette()->numcolors);
 
+			if (!screen->is8bit()) color = playercolor;
+
 			hud::Clear(x, y, w, h, scale, x_align, y_align, x_origin, y_origin, color);
 			y += h + padding;
 			drawn += 1;
@@ -691,6 +693,8 @@ void EATeamPlayerColors(int x, int y,
 			                      GPART(playercolor),
 			                      BPART(playercolor),
 			                      GetDefaultPalette()->numcolors);
+
+			if (!screen->is8bit()) color = playercolor;
 
 			hud::Clear(x, y, w, h, scale, x_align, y_align, x_origin, y_origin, color);
 			y += h + padding;
